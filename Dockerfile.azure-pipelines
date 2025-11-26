@@ -1,4 +1,5 @@
-FROM ubuntu:20.04
+FROM ubuntu:24.04
+
 RUN DEBIAN_FRONTEND=noninteractive apt-get update
 RUN DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
 
@@ -13,15 +14,26 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommend
     lsb-release \
     software-properties-common \
     wget \
-    zip
+    zip \
+    dotnet-sdk-8.0
 
+# Install Azure CLI
 RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash
 
-# Install PowerShell :(
-RUN wget https://github.com/PowerShell/PowerShell/releases/download/v7.5.4/powershell_7.5.4-1.deb_amd64.deb
-RUN DEBIAN_FRONTEND=noninteractive dpkg -i powershell_7.5.4-1.deb_amd64.deb
-RUN DEBIAN_FRONTEND=noninteractive apt-get -f install -y
-RUN rm powershell_7.5.4-1.deb_amd64.deb
+# Install PowerShell
+RUN DEBIAN_FRONTEND=noninteractive curl -sSLO https://packages.microsoft.com/config/ubuntu/$(grep -oP '(?<=^DISTRIB_RELEASE=).+' /etc/lsb-release | tr -d '"')/packages-microsoft-prod.deb && \
+    dpkg -i packages-microsoft-prod.deb && \
+    rm -f packages-microsoft-prod.deb && \
+    apt-get update && \
+    apt-get install -y powershell && \
+    ln -s /usr/bin/pwsh /usr/bin/powershell
+
+# Install Azure PowerShell module
+RUN pwsh -Command Set-PSRepository -Name "PSGallery" -InstallationPolicy Trusted && \
+    pwsh -Command Install-Module -Name Az -Force -AllowClobber -Scope AllUsers -Repository PSGallery
+
+# Install SqlPackage
+RUN DEBIAN_FRONTEND=noninteractive dotnet tool install -g microsoft.sqlpackage
 
 # Can be 'linux-x64', 'linux-arm64', 'linux-arm', 'rhel.6-x64'.
 ENV TARGETARCH=linux-x64
