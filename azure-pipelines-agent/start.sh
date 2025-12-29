@@ -55,6 +55,26 @@ export VSO_AGENT_IGNORE=AZP_TOKEN,AZP_TOKEN_FILE
 
 print_header "1. Determining matching Azure Pipelines agent..."
 
+# If TARGETARCH is not set, detect container architecture and set appropriate value
+if [ -z "$TARGETARCH" ]; then
+  _dpkg_arch=$(dpkg --print-architecture 2>/dev/null || true)
+  case "$_dpkg_arch" in
+    amd64|x86_64) TARGETARCH=linux-x64 ;;
+    arm64|aarch64) TARGETARCH=linux-arm64 ;;
+    armhf|armv7l) TARGETARCH=linux-arm ;;
+    *)
+      _uname_arch=$(uname -m 2>/dev/null || true)
+      case "$_uname_arch" in
+        x86_64) TARGETARCH=linux-x64 ;;
+        aarch64) TARGETARCH=linux-arm64 ;;
+        armv7l) TARGETARCH=linux-arm ;;
+        *) TARGETARCH=linux-x64 ;;
+      esac
+      ;;
+  esac
+  echo "Using TARGETARCH=$TARGETARCH"
+fi
+
 AZP_AGENT_PACKAGES=$(curl -LsS \
     -u user:$(cat "$AZP_TOKEN_FILE") \
     -H 'Accept:application/json;' \
