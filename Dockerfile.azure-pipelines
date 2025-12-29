@@ -20,36 +20,18 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommend
 # Install Azure CLI
 RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash
 
-# Install PowerShell (select correct release asset for container architecture via GitHub API)
-ARG POWERSHELL_VERSION=
-RUN ARCH=$(dpkg --print-architecture) && \
-        case "$ARCH" in \
-            amd64) PS_ARCH='x64' ;; \
-            arm64) PS_ARCH='arm64' ;; \
-            armhf) PS_ARCH='arm' ;; \
-            *) PS_ARCH='x64' ;; \
-        esac && \
-        if [ -z "${POWERSHELL_VERSION}" ]; then \
-            API_URL="https://api.github.com/repos/PowerShell/PowerShell/releases/latest"; \
-        else \
-            API_URL="https://api.github.com/repos/PowerShell/PowerShell/releases/tags/v${POWERSHELL_VERSION}"; \
-        fi && \
-        DOWNLOAD_URL=$(curl -fsSL "$API_URL" | jq -r --arg arch "$PS_ARCH" '.assets[] | select(.name | test("linux.*"+$arch+".*tar.gz"; "i")) | .browser_download_url' | head -n1) && \
-        [ -n "$DOWNLOAD_URL" ] && \
-        curl -fsSL -o /tmp/pwsh.tar.gz "$DOWNLOAD_URL" && \
-        tar -tzf /tmp/pwsh.tar.gz > /dev/null && \
-        mkdir -p /opt/microsoft/powershell && \
-        tar -xzf /tmp/pwsh.tar.gz -C /opt/microsoft/powershell && \
-        PWSH_BIN=$(find /opt/microsoft/powershell -type f -name pwsh -print -quit) && \
-        ln -s "$PWSH_BIN" /usr/bin/pwsh && ln -s /usr/bin/pwsh /usr/bin/powershell && ln -s /usr/bin/pwsh /usr/bin/azureps && \
-        chmod +x "$PWSH_BIN" && rm -f /tmp/pwsh.tar.gz
+# Install PowerShell
+RUN curl -sSLO https://packages.microsoft.com/config/ubuntu/$(grep -oP '(?<=^DISTRIB_RELEASE=).+' /etc/lsb-release | tr -d '"')/packages-microsoft-prod.deb && \
+    DEBIAN_FRONTEND=noninteractive dpkg -i packages-microsoft-prod.deb && \
+    rm -f packages-microsoft-prod.deb && \
+    DEBIAN_FRONTEND=noninteractive apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y powershell && \
+    ln -s /usr/bin/pwsh /usr/bin/powershell && \
+    ln -s /usr/bin/pwsh /usr/bin/azureps
 
 # Install Azure PowerShell module
 RUN pwsh -Command Set-PSRepository -Name "PSGallery" -InstallationPolicy Trusted && \
-    pwsh -Command Install-Module -Name Az -Force -AllowClobber -Scope AllUsers -Repository PSGallery && \
-    printf '%s\n' '#!/bin/sh' 'exec echo /usr/bin/pwsh' > /usr/local/bin/azureps && \
-    chmod +x /usr/local/bin/azureps && \
-    /usr/local/bin/azureps
+    pwsh -Command Install-Module -Name Az -Force -AllowClobber -Scope AllUsers -Repository PSGallery
 
 # Install SqlPackage
 RUN DEBIAN_FRONTEND=noninteractive DOTNET_NOLOGO=true DOTNET_CLI_TELEMETRY_OUTPUT=1 dotnet tool install -g microsoft.sqlpackage --verbosity quiet
@@ -63,8 +45,8 @@ ENV azureps=/usr/bin/azureps
 ENV pwsh=/usr/bin/pwsh
 ENV powershell=/usr/bin/powershell
 ENV az=/usr/bin/az
-# Set target architecuture
-# ENV TARGETARCH=linux-x64 # will be detected at runtime by the agent start script
+# Set target architecuture (will be handled by start.sh if unset)
+ENV TARGETARCH=linux-x64
 
 WORKDIR /azp
 
